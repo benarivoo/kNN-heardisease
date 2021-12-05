@@ -1,0 +1,235 @@
+---
+title: "LBB Classification 1 - Benarivo"
+author: "Benarivo"
+date: "19/04/2020"
+output: 
+  html_document:
+    highlight: breezedark
+    number_section: yes
+    theme: cosmo
+    toc: yes
+    toc_depth: 4
+    toc_float:
+      collapsed: no
+  pdf_document:
+    toc: yes
+    toc_depth: '4'
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+
+```{r,warning=FALSE,message=FALSE}
+library(dplyr)
+library(tidyr)
+library(lubridate)
+library(ggplot2)
+library(class)
+library(car)
+library(caret)
+library(readr)
+library(gtools)
+library(ggplot2)
+library(GGally)
+library(rsample)
+
+```
+
+In this project, we will analyse a heart disease data with 13 attributes.
+*K-nearest neighboor* will be used in this project
+
+# Import Data
+
+First we need to import the data using 'read.csv'.
+```{r}
+heart <- read.csv("heart.csv")
+```
+
+# Data Wrangling
+
+After importing the data, we need toe´inspect the dataset.
+
+Now let's print the first 10 rows from the dataset.
+```{r}
+head(heart, 10)
+```
+
+Additionally, let's print 10 last rows from our dataset.
+```{r}
+tail(heart,10)
+```
+
+From above, we can see that the data has these variables:
+
+1. ï..age: age in years
+2. sex: (1 = male; 0 = female)
+3. cp: chest pain type
+4. trestbps: resting blood pressure (in mm Hg on admission to the hospital)
+5. chol: serum cholestoral in mg/dl
+6. fbs: (fasting blood sugar > 120 mg/dl) (1 = true; 0 = false)
+7. restecg: resting electrocardiographic results
+8. thalach: maximum heart rate achieved
+9. exang: exercise induced angina (1 = yes; 0 = no)
+10. oldpeak: ST depression induced by exercise relative to rest
+11. slope: the slope of the peak exercise ST segment
+12. ca: number of major vessels (0-3) colored by flourosopy
+13. thal: heart defect type
+14. target: 1 = have heart disease or 0 = does not have a heart disease
+
+Our target variable is: *target*
+
+We will change the name of *ï..age* needs to be changed into *age*
+
+```{r}
+heart <- rename(heart, age = ï..age)
+head(heart)
+```
+
+Additionally, we can print the information of the data type of each variable using 'str()':
+```{r}
+str(heart)
+```
+
+From above, we can see several changes should be implemented: 
+1. *sex* to be changed to factor
+2. *cp* to be changed to factor
+2. *fbs* to be changed to factor
+3. *exang* to be changed to factor
+4. *thal* to be changed to factor
+5. *target* to be changed to factor
+
+```{r}
+heart <- heart %>% 
+  mutate(sex = as.factor(sex),
+         cp = as.factor(cp),
+         fbs = as.factor(fbs),
+         exang = as.factor(exang),
+         thal = as.factor(thal),
+         target = as.factor(target))
+str(heart)
+```
+
+Now let's check on the missing values
+```{r}
+colSums(is.na(heart))
+```
+
+We have no missing values in the dataset. 
+
+# Exploratory Data Analysis
+
+The target of our model will be *target*
+
+Let's check on the summary of our dataset:
+```{r}
+summary(heart)
+```
+
+Our factor variables are not balanced, however they are still important to be included. If one of them is not included, then we will not be able to predict based on that predictor. 
+
+Now we will check the imbalance in our data:
+```{r}
+table(heart$target)
+```
+The data is relatively well-balanced. 
+
+# Cross Validation
+
+Let's split the data into train dataset (80% of the data) and test dataset (20% of the data).
+
+```{r}
+# splitting
+set.seed(100)
+splitted <- initial_split(data = heart, prop = 0.8, strata = "target")
+
+heart_train <- training(splitted)
+heart_test <- testing(splitted)
+```
+
+Now let's check the imbalance of both new dataset
+```{r}
+table(heart_train$target)
+table(heart_test$target)
+```
+As you see both dataset are relativelty unbalance similar to the initial dataset. This is because we use *strata* = "target".
+
+# Build Model
+
+Now let's build a Logistic Regression Model
+```{r}
+heart_model <- glm(target~., heart_train, family="binomial")
+summary(heart_model)
+```
+
+There are several predictors that are not significant, however those predictors are still needed because its affect to heart diseaso according to science. 
+
+# Predict
+
+Now we will predict using our test dataset *heart_test*:
+```{r}
+heart_test$pred.target <- predict(heart_model, newdata = heart_test, type = "response")
+```
+
+Now we classify based on the *pred.target* values
+```{r}
+# ifelse(kondisi, benar, salah)
+heart_test$pred.Label <- ifelse(heart_test$pred.target > 0.5, "1", "0")
+# ubah kelas target (aktual dan prediksi) menjadi factor
+heart_test <- heart_test %>% 
+  mutate(pred.Label = as.factor(pred.Label))
+```
+
+Let's check on our prediction:
+```{r}
+heart_test %>% 
+  select(pred.target, pred.Label, target) %>% 
+  tail(20)
+```
+
+# Model Evaluation
+
+Now let's check on the performance of our model: 
+```{r}
+confusionMatrix(data = heart_test$pred.Label,
+                reference = heart_test$target,
+                positive = "1")
+```
+The accuracy of our model is 0.8136, which is already sufficient.
+
+In this model the positive value is: diagnose with heart disease. Then:
+
+False Positive: diagnose with heart disease, but do not have one
+False Negative: diagnose healthy, but have a heart disease
+
+It is better to have more False Positive and less False Negative. Therefore, we need to increase the sensitivity. 
+
+# Model Tuning
+
+To increase the model's sensitivity, we will decrease the threshold:
+```{r}
+# ifelse(kondisi, benar, salah)
+heart_test$pred.Label <- ifelse(heart_test$pred.target > 0.4, "1", "0")
+# ubah kelas target (aktual dan prediksi) menjadi factor
+heart_test <- heart_test %>% 
+  mutate(pred.Label = as.factor(pred.Label))
+```
+
+```{r}
+confusionMatrix(data = heart_test$pred.Label,
+                reference = heart_test$target,
+                positive = "1")
+```
+Now the sensitivty is 0.9688, while the accuracy is still maintained at 0.8814
+
+# Conclusion
+
+From this project, it could be conclude that:
+
+1. Predictors are chosen based on statistic and know-how
+2. Balanced train and test dataset is needed to build a model
+3. Logistic regression can be used for classification problems. 
+4. It is possible to tune a logistic regression model by shifting its threshold based on business context.
+
+
